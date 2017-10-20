@@ -1,7 +1,9 @@
 from math import sin, cos, sqrt, atan2, radians, pi
 import pandas as pd
 import numpy as np
+import optunity
 import argparse
+
 
 
 def readData(filename):
@@ -72,23 +74,58 @@ def weightedMean(points, weights):
 
     return [X/W, Y/W, Z/W]
 
+def f(lat, lon):
+    d = 0
+    midpoint = (lat, lon)
+    for p, w in zip(points, weights):
+        d += w * distance(p, midpoint)
 
+    return d
+
+points = []
+weights = []
 def main(**args):
-    points, weights = readData(args['db'])
-    print "Loading {} points".format(len(points))
+    global points, weights
 
-    midpoint = points.mean(axis=0)
-    print "Midpoint (average latitude/longitude):\t", midpoint
+    points, weights = readData(args['db'])
+    print "\nLoading {} points\n".format(len(points))
+
+    midpoint1 = points.mean(axis=0)
+    print "Midpoint (average latitude/longitude):\t", midpoint1
 
     c_points = convertoToCartesian(points)
     c_midpoint = c_points.mean(axis=0)
-    midpoint = convertToDegree([c_midpoint])[0]
-    print "Midpoint (center of gravity):\t\t", midpoint
+    midpoint2 = convertToDegree([c_midpoint])[0]
+    print "Midpoint (center of gravity):\t\t", midpoint2
 
     c_midpoint = weightedMean(c_points, weights)
-    midpoint = convertToDegree([c_midpoint])[0]
-    print "Weighted midpoint (center of gravity):\t", midpoint
+    midpoint3 = convertToDegree([c_midpoint])[0]
+    print "Weighted midpoint (center of gravity):\t", midpoint3
 
+
+    print "\nBegin optimization"
+    midpoint = midpoint3
+    constraints = {'lat':[midpoint[0]-0.1 , midpoint[0]+0.1], 'lon': [midpoint[1]-0.1 , midpoint[1]+0.1]}
+
+    print "\tStarting from:\t", midpoint
+    print "\tCurrent distance:\t", f(midpoint[0], midpoint[1])[0]
+
+    for sname in optunity.available_solvers(): #['particle swarm']
+        #create a solver
+        suggestion = optunity.suggest_solver(num_evals=500, solver_name=sname, **constraints)
+        solver = optunity.make_solver(**suggestion)
+
+        #optimize the function
+        optimum = optunity.optimize(solver, f, maximize=False, max_evals=100)
+
+        print "\n\t==================================="
+        print "\tSolver name:\t", suggestion['solver_name']
+        print "\tMidpoint:\t", optimum[0]
+        print "\tDistance:\t", optimum[1][0][0]
+        print "\tIterations:\t", optimum[1][1]['num_evals']
+        #print "\tTime (ms):\t", optimum[1][1]['time']
+
+        #print optimum
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Compute midpoint of set of points', version='%(prog)s 1.0')
